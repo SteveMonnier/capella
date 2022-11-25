@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2020 THALES GLOBAL SERVICES.
+ * Copyright (c) 2006, 2022 THALES GLOBAL SERVICES.
  * 
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License 2.0 which is available at
@@ -16,13 +16,20 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import org.eclipse.core.runtime.IConfigurationElement;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.edit.domain.EditingDomain;
 import org.eclipse.emf.transaction.TransactionalEditingDomain;
+import org.eclipse.sirius.business.api.session.Session;
+import org.eclipse.sirius.business.api.session.SessionManager;
+import org.eclipse.sirius.business.api.session.resource.AirdResource;
 import org.polarsys.capella.common.ef.domain.IEditingDomainListener;
 import org.polarsys.capella.common.libraries.ILibraryManager;
 import org.polarsys.capella.common.libraries.IModel;
@@ -77,18 +84,23 @@ public class LibraryManager extends ILibraryManager implements ILibraryProviderL
 
   @Override
   public Collection<IModelIdentifier> getAvailableModels() {
-    if (models == null) {
-      models = new ArrayList<IModelIdentifier>();
-      for (ILibraryProvider provider : getProviders()) {
-        for (IModelIdentifier model : provider.getAvailableModels()) {
-          if (!models.contains(model)) {
-            models.add(model);
+      return getAvailableModels(null);
+  }
+
+  @Override
+  public Collection<IModelIdentifier> getAvailableModels(Session session) {
+      if (models == null) {
+          models = new ArrayList<IModelIdentifier>();
+          for (ILibraryProvider provider : getProviders()) {
+              for (IModelIdentifier model : provider.getAvailableModels(session)) {
+                  if (!models.contains(model)) {
+                      models.add(model);
+                  }
+              }
           }
         }
-      }
+        return models;
     }
-    return models;
-  }
 
   @Override
   public void onLibraryProviderChanged(LibraryProviderEvent event) {
@@ -100,8 +112,14 @@ public class LibraryManager extends ILibraryManager implements ILibraryProviderL
   @Override
   public Collection<IModel> getAllModels(TransactionalEditingDomain domain) {
     HashMap<IModelIdentifier, IModel> models = new HashMap<IModelIdentifier, IModel>();
+    List<AirdResource> airdResources = domain.getResourceSet().getResources().stream().filter(AirdResource.class::isInstance).map(AirdResource.class::cast).collect(Collectors.toList());
+    Iterator<AirdResource> airdResourcesIterator = airdResources.iterator();
+    Session session = null;
+    while (session == null && airdResourcesIterator.hasNext()) {
+        session = SessionManager.INSTANCE.getSession(airdResourcesIterator.next().getURI(), new NullProgressMonitor());
+    }
 
-    for (IModelIdentifier identifier : getAvailableModels()) {
+    for (IModelIdentifier identifier : getAvailableModels(session)) {
       IModel model = getModel(domain, identifier);
       if (model != null) {
         models.put(identifier, model);
